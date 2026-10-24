@@ -253,3 +253,5 @@ function resetClonesState() {
     initClonesForLevel(currentLevel, levelData.cloneIds, levelData.start, levelData.switches);
   }
 }
+
+//Final Changes Done
