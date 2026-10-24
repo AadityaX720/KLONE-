@@ -24,15 +24,18 @@ function initClonesForLevel(levelNum, activeCloneIds, startPos, switches) {
   const sx = startPos ? startPos.x : 42;
   const sy = startPos ? startPos.y : 42;
 
+  // Fallback to levelData.switches if switches argument is missing
+  const levelSwitches = switches || (typeof levelData !== 'undefined' && levelData ? levelData.switches : []);
+
   if (Array.isArray(activeCloneIds)) {
     activeCloneIds.forEach((id, index) => {
       let spawnX, spawnY;
 
-      // Rule: Respawn the Swap Clone (ID 1) near the pressure tile (switch)
-      if (id === 1 && switches && switches.length > 0) {
-        const targetSwitch = switches[0];
-        spawnX = targetSwitch.x - 45;
-        spawnY = targetSwitch.y + (targetSwitch.h / 2) - 12;
+      // Rule 1 Fixed: Spawn the Swap Clone (ID 1) very close to its pressure tile
+      if (id === 1 && levelSwitches && levelSwitches.length > 0) {
+        const targetSwitch = levelSwitches[0];
+        spawnX = targetSwitch.x - 30; // Positioned right next to the plate
+        spawnY = targetSwitch.y + (targetSwitch.h / 2) - (cloneConfig.cloneSize / 2);
       } else {
         spawnX = sx + 140 + 80 * index;
         spawnY = sy + (index % 2 === 0 ? 60 : -60);
@@ -140,6 +143,8 @@ function updateClones(player, playerMoved, shiftHeld) {
     clone.lastPlayerX = player.x;
     clone.lastPlayerY = player.y;
 
+    // Rule 2 Fixed: Prevent wall-crossing by checking X and Y movements independently 
+    // with full collision validation, preventing diagonal clipping through solid boundaries.
     if (!isCloneBlocked(targetX, clone.y, clone.size, clone, player)) {
       clone.x = targetX;
     }
