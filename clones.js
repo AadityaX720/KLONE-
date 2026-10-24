@@ -17,7 +17,7 @@ let sacrificeActive = true;
 
 function getClones() { return clones; }
 
-function initClonesForLevel(levelNum, activeCloneIds, startPos) {
+function initClonesForLevel(levelNum, activeCloneIds, startPos, switches) {
   clones = [];
   sacrificeActive = true;
 
@@ -26,8 +26,17 @@ function initClonesForLevel(levelNum, activeCloneIds, startPos) {
 
   if (Array.isArray(activeCloneIds)) {
     activeCloneIds.forEach((id, index) => {
-      let spawnX = sx + 140 + 80 * index;
-      let spawnY = sy + (index % 2 === 0 ? 60 : -60);
+      let spawnX, spawnY;
+
+      // Rule: Respawn the Swap Clone (ID 1) near the pressure tile (switch)
+      if (id === 1 && switches && switches.length > 0) {
+        const targetSwitch = switches[0];
+        spawnX = targetSwitch.x - 45;
+        spawnY = targetSwitch.y + (targetSwitch.h / 2) - 12;
+      } else {
+        spawnX = sx + 140 + 80 * index;
+        spawnY = sy + (index % 2 === 0 ? 60 : -60);
+      }
 
       clones.push({
         id: id,
@@ -57,7 +66,6 @@ function isCloneBlocked(x, y, size = 24, excludeClone = null, player = null) {
   if (typeof levelData === 'undefined' || !levelData) return false;
   const a = { x, y, size };
 
-  // STRICT WALL AND BOUNDARY CHECK: Clones cannot cross any walls or level boundaries
   const active = (typeof activeSwitches === 'function') ? activeSwitches() : [];
   const solids = [
     ...(levelData.walls || []),
@@ -132,7 +140,6 @@ function updateClones(player, playerMoved, shiftHeld) {
     clone.lastPlayerX = player.x;
     clone.lastPlayerY = player.y;
 
-    // Apply X and Y updates independently with strict wall collision checks
     if (!isCloneBlocked(targetX, clone.y, clone.size, clone, player)) {
       clone.x = targetX;
     }
@@ -207,7 +214,7 @@ function drawClones(ctx) {
     const drawColor = isFrozen ? "#00f0ff" : c.color;
 
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 8;
     const g = ctx.createLinearGradient(c.x, c.y, c.x + c.size, c.y + c.size);
     g.addColorStop(0, "#ffffff");
     g.addColorStop(.3, drawColor);
@@ -228,11 +235,11 @@ function drawClones(ctx) {
     let labelText = cloneInfo ? `${cloneInfo.icon} ${cloneInfo.name}` : c.name;
     if (isFrozen) labelText += " [FROZEN]";
 
-    ctx.font = "bold 10px Arial, sans-serif";
+    ctx.font = "bold 11px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.fillStyle = drawColor;
     ctx.shadowColor = "#000";
-    ctx.shadowBlur = 4;
+    ctx.shadowBlur = 3;
     ctx.fillText(labelText, c.x + c.size / 2, c.y - 6);
 
     ctx.restore();
@@ -243,6 +250,6 @@ function resetClonesState() {
   clones = [];
   sacrificeActive = true;
   if (typeof currentLevel !== 'undefined' && typeof levelData !== 'undefined') {
-    initClonesForLevel(currentLevel, levelData.cloneIds, levelData.start);
+    initClonesForLevel(currentLevel, levelData.cloneIds, levelData.start, levelData.switches);
   }
 }

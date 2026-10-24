@@ -44,8 +44,9 @@
         <main class="compact-main">
             <div class="game-top-bar">
                 <div class="game-info">
-                    <span>LEVEL 01</span>
-                    <span class="level-title-text">SWAP BOOTCAMP</span>
+                    <span id="hudLevelBadge">LEVEL 01</span>
+                    <span class="level-title-text" id="hudLevelTitle">SWAP BOOTCAMP</span>
+                    <span class="hud-stats-pill" id="hudTimerBadge" style="display:inline-block;">⏱ 00:00</span>
                 </div>
                 <div class="top-hud-buttons">
                     <button id="openAiModalBtn" class="hud-action-btn large-hud-btn" type="button" title="KLONE AI Support">🤖 KLONE AI</button>
@@ -93,11 +94,11 @@
                     <!-- TAB 1: GOAL -->
                     <section class="pane" aria-label="Goal">
                         <h3 class="disp">OBJECTIVE</h3>
-                        <p>Reach the glowing exit portal in every level. Clones copy your moves according to their own rule. Solve the puzzle in as few moves as possible.</p>
+                        <p>Reach the glowing exit portal in every level. Clones copy your moves according to their own rule. Solve the puzzle in as few moves and as fast as possible.</p>
                         <div class="modal-grid-objs">
                             <div class="modal-card-item"><div class="ic exit"></div><h4>1. Exit Portal</h4><p>Step on it to finish the level. Clones cannot finish for you.</p></div>
                             <div class="modal-card-item"><div class="ic plate"></div><h4>2. Turn-Based</h4><p>Every step = 1 move. Clones react right after you move.</p></div>
-                            <div class="modal-card-item"><div class="ic door"></div><h4>3. Star Par</h4><p>Fewer moves earn more stars (up to 3) based on level par.</p></div>
+                            <div class="modal-card-item"><div class="ic door"></div><h4>3. Star Par</h4><p>Meet par moves and par time to earn up to 3 stars.</p></div>
                         </div>
                     </section>
 
@@ -199,10 +200,15 @@
                     <span>AUDIO EFFECTS & MUSIC</span>
                     <button id="soundToggle" type="button" aria-pressed="true" onclick="setSoundEnabled(typeof soundEnabled !== 'undefined' ? !soundEnabled : true)">🔊 SOUND ON</button>
                 </div>
+
+                <div class="setting-row" style="margin-top: 14px;">
+                    <span>SHOW TIMER IN HUD</span>
+                    <button id="timerDisplayToggle" type="button" aria-pressed="true" onclick="toggleTimerDisplay()">👁 TIMER VISIBLE</button>
+                </div>
                 
                 <div class="setting-row" style="margin-top: 14px;">
                     <span>BUILD VERSION</span>
-                    <button id="devModeTriggerBtn" type="button" style="background:#222; border:1px dashed var(--accent); color:#aaa; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">v2.0.4 (Build 5)</button>
+                    <button id="devModeTriggerBtn" type="button" style="background:#222; border:1px dashed var(--accent); color:#aaa; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer;">v2.1.0 (Build 6)</button>
                 </div>
 
                 <!-- REDESIGNED THEME PICKER PILLS -->
@@ -217,9 +223,9 @@
                 </div>
                 
                 <div id="settingsQuickControlsBox" style="margin: 14px 0; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--accent);">
-                    <p style="font-size: 11px; color: var(--accent); font-weight: bold; margin-bottom: 6px;">QUICK CONTROLS</p>
-                    <p style="font-size: 12px; color: #ccc; margin: 3px 0;">• Move: WASD / Arrows</p>
-                    <p style="font-size: 12px; color: #ccc; margin: 3px 0;">• Restart: R | Help: H</p>
+                    <p style="font-size: 12px; color: var(--accent); font-weight: bold; margin-bottom: 6px;">QUICK CONTROLS</p>
+                    <p style="font-size: 13px; color: #ccc; margin: 3px 0;">• Move: WASD / Arrows</p>
+                    <p style="font-size: 13px; color: #ccc; margin: 3px 0;">• Restart: R | Help: H</p>
                 </div>
 
                 <div class="settings-actions">
@@ -242,10 +248,11 @@
     <!-- LEVEL COMPLETE OVERLAY -->
     <div id="restartOverlay" class="overlay">
         <div class="panel" style="text-align:center;">
-            <p class="overlay-label">TIMELINE INTERRUPTED</p>
-            <h2>LEVEL COMPLETE</h2>
-            <p id="victoryDetails">Your next attempt starts here.</p>
-            <button id="restartButton" class="btn play" style="width:100%;font-size:1.4rem;padding:0.6em;"><span>↻ RESTART LEVEL</span></button>
+            <p class="overlay-label" id="victorySubtitle">TIMELINE INTERRUPTED</p>
+            <h2 id="victoryHeaderTitle">LEVEL COMPLETE</h2>
+            <p id="victoryDetails" style="font-size: 16px; line-height: 1.6;">Your next attempt starts here.</p>
+            <div id="victoryNewBestBanner" style="display:none; margin: 10px 0; padding: 8px; background: rgba(90,255,154,0.15); border: 2px solid #5aff9a; border-radius: 6px; color: #5aff9a; font-weight: bold; font-size: 15px; letter-spacing: 1px;">🎉 NEW PERSONAL BEST!</div>
+            <button id="restartButton" class="btn play" style="width:100%;font-size:1.4rem;padding:0.6em;margin-top:10px;"><span>↻ RESTART LEVEL</span></button>
         </div>
     </div>
 

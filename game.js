@@ -1,4 +1,4 @@
-// KLONE — Core engine supporting multi-clone coordination, synchronized plates, and safe state management
+// KLONE — Core engine supporting timer, moves, par metrics, and audio synthesis
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const player = { x: 40, y: 40, size: 24, speed: 3.2 };
@@ -15,12 +15,19 @@ let levelData;
 let shiftHeld = false;
 let playerMoveCount = 0;
 
+// Timer & Judge state variables
+let levelTimerSeconds = 0;
+let timerRunning = false;
+let timerInterval = null;
+let hasPlayerMovedThisLevel = false;
+let showTimerInHud = true;
+
 const themes = {
-  1: { id: "red", bg1: "#1a0202", bg2: "#2b0505", bg3: "#0a0101", accent: "#ff1e1e", glow: "rgba(255,30,30,0.4)", wall1: "#592b2b", wall2: "#2e1414" },
-  2: { id: "blue", bg1: "#020d1a", bg2: "#05182b", bg3: "#01040a", accent: "#1e8aff", glow: "rgba(30,138,255,0.4)", wall1: "#1b3b59", wall2: "#0f1e2e" },
-  3: { id: "green", bg1: "#021a1a", bg2: "#052b2b", bg3: "#010a0a", accent: "#00f0ff", glow: "rgba(0,240,255,0.4)", wall1: "#184e59", wall2: "#0c272e" },
-  4: { id: "purple", bg1: "#14021a", bg2: "#22052b", bg3: "#08010a", accent: "#b36bff", glow: "rgba(179,107,255,0.4)", wall1: "#3c1b59", wall2: "#1f0f2e" },
-  5: { id: "amber", bg1: "#1a1002", bg2: "#2b1b05", bg3: "#0a0601", accent: "#ff9a2e", glow: "rgba(255,154,46,0.4)", wall1: "#593d1b", wall2: "#2e200f" }
+  1: { id: "red", bg1: "#1a0202", bg2: "#2b0505", bg3: "#0a0101", accent: "#ff1e1e", glow: "rgba(255,30,30,0.15)", wall1: "#592b2b", wall2: "#2e1414" },
+  2: { id: "blue", bg1: "#020d1a", bg2: "#05182b", bg3: "#01040a", accent: "#1e8aff", glow: "rgba(30,138,255,0.15)", wall1: "#1b3b59", wall2: "#0f1e2e" },
+  3: { id: "green", bg1: "#021a1a", bg2: "#052b2b", bg3: "#010a0a", accent: "#00f0ff", glow: "rgba(0,240,255,0.15)", wall1: "#184e59", wall2: "#0c272e" },
+  4: { id: "purple", bg1: "#14021a", bg2: "#22052b", bg3: "#08010a", accent: "#b36bff", glow: "rgba(179,107,255,0.15)", wall1: "#3c1b59", wall2: "#1f0f2e" },
+  5: { id: "amber", bg1: "#1a1002", bg2: "#2b1b05", bg3: "#0a0601", accent: "#ff9a2e", glow: "rgba(255,154,46,0.15)", wall1: "#593d1b", wall2: "#2e200f" }
 };
 
 function applyTheme(themeId) {
@@ -57,7 +64,7 @@ function startBGM() {
   let step = 0;
 
   bgmInterval = setInterval(() => {
-    if (!soundEnabled || !audioContext) return;
+    if (!soundEnabled || !audioContext || !timerRunning) return;
     const now = audioContext.currentTime;
     const chord = chordProgression[step % chordProgression.length];
     step++;
@@ -70,7 +77,7 @@ function startBGM() {
         osc.frequency.setValueAtTime(freq, now);
 
         gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(0.018, now + 0.2);
+        gain.gain.linearRampToValueAtTime(0.015, now + 0.2);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
 
         osc.connect(gain);
@@ -171,14 +178,91 @@ function setSoundEnabled(enabled) {
     button.textContent = soundEnabled ? "🔊 SOUND ON" : "🔇 SOUND OFF";
     button.setAttribute("aria-pressed", String(soundEnabled));
   }
-  if (soundEnabled && gameStarted) {
+  if (soundEnabled && gameStarted && timerRunning) {
     startBGM();
   } else {
     stopBGM();
   }
 }
 
+function toggleTimerDisplay() {
+  showTimerInHud = !showTimerInHud;
+  const btn = document.getElementById("timerDisplayToggle");
+  if (btn) {
+    btn.textContent = showTimerInHud ? "👁 TIMER VISIBLE" : "🙈 TIMER HIDDEN";
+    btn.setAttribute("aria-pressed", String(showTimerInHud));
+  }
+  const badge = document.getElementById("hudTimerBadge");
+  if (badge) {
+    badge.style.display = showTimerInHud ? "inline-block" : "none";
+  }
+}
+
+// Timer control functions
+function startLevelTimer() {
+  if (timerRunning) return;
+  timerRunning = true;
+  if (soundEnabled) startBGM();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (!timerRunning || gameWon || !gameStarted) return;
+    
+    // Pause if overlays or hidden tab
+    const settingsOpen = document.getElementById('settingsModalOverlay')?.classList.contains('open');
+    const aiOpen = document.getElementById('aiSidePanel')?.classList.contains('open');
+    const howOpen = document.getElementById('ov')?.classList.contains('on');
+    const shortcutOpen = document.getElementById('levelShortcutModal')?.classList.contains('open');
+    const restartOpen = document.getElementById('restartOverlay')?.classList.contains('open');
+    
+    if (document.hidden || settingsOpen || aiOpen || howOpen || shortcutOpen || restartOpen) {
+      return;
+    }
+
+    levelTimerSeconds++;
+    updateHudTimerDisplay();
+  }, 1000);
+}
+
+function pauseLevelTimer() {
+  timerRunning = false;
+  stopBGM();
+}
+
+function resetLevelTimer() {
+  timerRunning = false;
+  hasPlayerMovedThisLevel = false;
+  levelTimerSeconds = 0;
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  updateHudTimerDisplay();
+}
+
+function formatTimeMMSS(totalSecs) {
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function updateHudTimerDisplay() {
+  const badge = document.getElementById("hudTimerBadge");
+  if (badge) {
+    badge.textContent = `⏱ ${formatTimeMMSS(levelTimerSeconds)}`;
+  }
+}
+
+// Level Config Object containing parMoves, parTime, and star judging rules
+const levelConfigs = {
+  1: { title: "SWAP BOOTCAMP", theme: 1, parMoves: 15, parTime: 30, cloneIds: [1], hints: ["Nudge: Swap Clone mirrors your moves.", "Concept: Press Q to swap positions, press F on plates to freeze clone.", "Next: Reach the exit portal."] },
+  2: { title: "FROZEN VAULT", theme: 2, parMoves: 22, parTime: 45, cloneIds: [1, 2], hints: ["Nudge: Hold Shift to move Freeze clone into position.", "Concept: Coordinate swap and freeze mechanics across scrambled chambers."] },
+  3: { title: "SHADOW MAZE", theme: 3, parMoves: 25, parTime: 50, cloneIds: [2, 3], hints: ["Nudge: Herd the Shy clone using your movement angles through the maze."] },
+  4: { title: "MAGNETIC GRID", theme: 4, parMoves: 28, parTime: 60, cloneIds: [1, 4], hints: ["Nudge: Magnet clone drags crates into scrambled positions."] },
+  5: { title: "THE ULTIMATE PARADOX", theme: 5, parMoves: 35, parTime: 75, cloneIds: [1, 4, 5], hints: ["Nudge: Sacrifice clone X and coordinate 3-point pressure activation."] }
+};
+
 function generateLevelData(n) {
+  const cfg = levelConfigs[n] || levelConfigs[1];
   const boundaryWalls = [
     { x: 0, y: 0, w: 960, h: 12 },
     { x: 0, y: 528, w: 960, h: 12 },
@@ -189,11 +273,7 @@ function generateLevelData(n) {
   let levelObj;
   if (n === 1) {
     levelObj = {
-      title: "SWAP BOOTCAMP",
-      theme: 1,
-      par: 15,
-      cloneIds: [1],
-      hints: ["Nudge: Swap Clone mirrors your moves.", "Concept: Press Q to swap positions, press F on plates to freeze clone.", "Next: Reach the exit portal."],
+      title: cfg.title, theme: cfg.theme, par: cfg.parMoves, parTime: cfg.parTime, cloneIds: cfg.cloneIds, hints: cfg.hints,
       start:{x:42,y:42}, goal:{x:870,y:215,w:50,h:110},
       walls:[
         {x:280,y:12,w:18,h:220},
@@ -206,11 +286,7 @@ function generateLevelData(n) {
     };
   } else if (n === 2) {
     levelObj = {
-      title: "FROZEN VAULT",
-      theme: 2,
-      par: 22,
-      cloneIds: [1, 2],
-      hints: ["Nudge: Hold Shift to move Freeze clone into position.", "Concept: Coordinate swap and freeze mechanics across scrambled chambers."],
+      title: cfg.title, theme: cfg.theme, par: cfg.parMoves, parTime: cfg.parTime, cloneIds: cfg.cloneIds, hints: cfg.hints,
       start:{x:42,y:240}, goal:{x:870,y:215,w:50,h:110},
       walls:[
         {x:240,y:12,w:18,h:180},
@@ -227,11 +303,7 @@ function generateLevelData(n) {
     };
   } else if (n === 3) {
     levelObj = {
-      title: "SHADOW MAZE",
-      theme: 3,
-      par: 25,
-      cloneIds: [2, 3],
-      hints: ["Nudge: Herd the Shy clone using your movement angles through the maze."],
+      title: cfg.title, theme: cfg.theme, par: cfg.parMoves, parTime: cfg.parTime, cloneIds: cfg.cloneIds, hints: cfg.hints,
       start:{x:42,y:240}, goal:{x:870,y:215,w:50,h:110},
       walls:[
         {x:320,y:120,w:18,h:300},
@@ -248,11 +320,7 @@ function generateLevelData(n) {
     };
   } else if (n === 4) {
     levelObj = {
-      title: "MAGNETIC GRID",
-      theme: 4,
-      par: 28,
-      cloneIds: [1, 4],
-      hints: ["Nudge: Magnet clone drags crates into scrambled positions."],
+      title: cfg.title, theme: cfg.theme, par: cfg.parMoves, parTime: cfg.parTime, cloneIds: cfg.cloneIds, hints: cfg.hints,
       start:{x:42,y:140}, goal:{x:870,y:215,w:50,h:110},
       walls:[
         {x:350,y:12,w:18,h:220},
@@ -268,11 +336,7 @@ function generateLevelData(n) {
     };
   } else {
     levelObj = {
-      title: "THE ULTIMATE PARADOX",
-      theme: 5,
-      par: 35,
-      cloneIds: [1, 4, 5],
-      hints: ["Nudge: Sacrifice clone X and coordinate 3-point pressure activation."],
+      title: cfg.title, theme: cfg.theme, par: cfg.parMoves, parTime: cfg.parTime, cloneIds: cfg.cloneIds, hints: cfg.hints,
       start:{x:42,y:240}, goal:{x:870,y:215,w:50,h:110},
       walls:[
         {x:300,y:12,w:18,h:160},
@@ -304,7 +368,7 @@ function loadLevel(n) {
   gameStarted = true;
   playerMoveCount = 0;
   
-  if (soundEnabled) startBGM();
+  resetLevelTimer();
   
   if (typeof initClonesForLevel === "function") initClonesForLevel(n, levelData.cloneIds, levelData.start);
   if (typeof updateCloneDock === "function") updateCloneDock(n);
@@ -312,11 +376,10 @@ function loadLevel(n) {
   if (typeof showLevelShortcutModal === "function") showLevelShortcutModal(n);
 
   Object.keys(keys).forEach(k => keys[k] = false);
-  const info = document.querySelector(".game-info");
-  if (info) {
-    info.children[0].textContent = `LEVEL 0${n}`;
-    info.children[1].textContent = levelData.title;
-  }
+  const badge = document.getElementById("hudLevelBadge");
+  const title = document.getElementById("hudLevelTitle");
+  if (badge) badge.textContent = `LEVEL 0${n}`;
+  if (title) title.textContent = levelData.title;
 }
 
 function startLevel(n) { loadLevel(n); }
@@ -387,6 +450,10 @@ function updatePlayer() {
 
   if (moved) {
     playerMoveCount++;
+    if (!hasPlayerMovedThisLevel) {
+      hasPlayerMovedThisLevel = true;
+      startLevelTimer();
+    }
   }
 
   if(typeof updateClones === "function") updateClones(player, moved, shiftHeld);
@@ -402,22 +469,66 @@ function updatePlayer() {
 
   if(rectsOverlap(player, { x: g.x, y: g.y, w: g.w, h: g.h }) && doorsOpen) {
     gameWon = true;
-    stopBGM();
-    
+    pauseLevelTimer();
+
+    // Evaluate Rating & Save with try/catch
+    const finalMoves = playerMoveCount;
+    const finalSeconds = levelTimerSeconds;
+    const parMoves = levelData.par;
+    const parTime = levelData.parTime || 45;
+
+    // Star judging rule: 3 stars if at or under par moves AND par time, 2 stars if meeting only one, 1 star for finishing
+    let earnedStars = 1;
+    const meetsMoves = finalMoves <= parMoves;
+    const meetsTime = finalSeconds <= parTime;
+
+    if (meetsMoves && meetsTime) {
+      earnedStars = 3;
+    } else if (meetsMoves || meetsTime) {
+      earnedStars = 2;
+    }
+
+    let isNewBest = false;
     try {
-      const stars = playerMoveCount <= levelData.par ? 3 : (playerMoveCount <= levelData.par * 1.5 ? 2 : 1);
-      const savedData = JSON.parse(localStorage.getItem('klone_progress') || '{}');
-      savedData[currentLevel] = Math.max(savedData[currentLevel] || 0, stars);
+      const savedData = JSON.parse(localStorage.getItem('klone_progress_v2') || '{}');
+      const prevRecord = savedData[currentLevel] || { stars: 0, time: 999999, moves: 999999 };
+      
+      let bestStars = Math.max(prevRecord.stars || 0, earnedStars);
+      let bestTime = prevRecord.time ? Math.min(prevRecord.time, finalSeconds) : finalSeconds;
+      let bestMoves = prevRecord.moves ? Math.min(prevRecord.moves, finalMoves) : finalMoves;
+
+      if (earnedStars > (prevRecord.stars || 0) || (earnedStars === prevRecord.stars && finalSeconds < (prevRecord.time || 999999))) {
+        if (prevRecord.stars > 0 && (earnedStars > prevRecord.stars || finalSeconds < prevRecord.time || finalMoves < prevRecord.moves)) {
+          isNewBest = true;
+        }
+      }
+      if (prevRecord.time === undefined) isNewBest = true;
+
+      savedData[currentLevel] = { stars: bestStars, time: bestTime, moves: bestMoves };
       savedData.unlocked = Math.max(savedData.unlocked || 1, currentLevel + 1);
-      localStorage.setItem('klone_progress', JSON.stringify(savedData));
+      localStorage.setItem('klone_progress_v2', JSON.stringify(savedData));
     } catch(e){}
 
     const overlay = document.getElementById("restartOverlay");
     if(overlay) overlay.classList.add("open");
-    const heading = document.querySelector("#restartOverlay h2");
+    
+    const heading = document.getElementById("victoryHeaderTitle");
     if(heading) heading.textContent = "LEVEL COMPLETE";
-    const copy = document.querySelector("#restartOverlay .panel > p:not(.overlay-label)");
-    if(copy) copy.textContent = `Completed in ${playerMoveCount} moves (Par: ${levelData.par}). ${currentLevel < 5 ? 'Ready for the next chamber?' : 'You completed the KLONE Paradox!'}`;
+
+    const details = document.getElementById("victoryDetails");
+    if(details) {
+      details.innerHTML = `
+        <div style="font-size:22px; color:var(--accent); font-weight:bold; margin-bottom:8px;">${'★'.repeat(earnedStars)}${'☆'.repeat(3 - earnedStars)}</div>
+        <div>⏱ Time: <b>${formatTimeMMSS(finalSeconds)}</b> (Par: ${formatTimeMMSS(parTime)})</div>
+        <div>👟 Moves: <b>${finalMoves}</b> (Par: ${parMoves})</div>
+      `;
+    }
+
+    const newBestBanner = document.getElementById("victoryNewBestBanner");
+    if (newBestBanner) {
+      newBestBanner.style.display = isNewBest ? "block" : "none";
+    }
+
     const btn = document.getElementById("restartButton");
     if(btn) btn.querySelector("span").textContent = currentLevel < 5 ? "NEXT LEVEL →" : "↻ PLAY AGAIN";
   }
@@ -433,7 +544,7 @@ function drawBackground() {
   
   for(let y = 0; y < canvas.height; y += 40) {
     for(let x = 0; x < canvas.width; x += 40){
-      ctx.fillStyle = ((x/40 + y/40) % 2 === 0) ? "rgba(255,255,255,.03)" : "rgba(0,0,0,.05)";
+      ctx.fillStyle = ((x/40 + y/40) % 2 === 0) ? "rgba(255,255,255,.025)" : "rgba(0,0,0,.04)";
       ctx.fillRect(x + 1, y + 1, 38, 38);
     }
   }
@@ -441,11 +552,11 @@ function drawBackground() {
 
 function drawWall(o) {
   const t = themes[levelData ? levelData.theme : 1];
-  ctx.save(); ctx.shadowColor = "#000"; ctx.shadowBlur = 9; ctx.shadowOffsetY = 4;
+  ctx.save(); ctx.shadowColor = "#000"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 3;
   const g = ctx.createLinearGradient(o.x, o.y, o.x + o.w, o.y + o.h);
   g.addColorStop(0, t.wall1); g.addColorStop(1, t.wall2);
   ctx.fillStyle = g; roundedRect(o.x, o.y, o.w, o.h, 4); ctx.fill();
-  ctx.shadowBlur = 0; ctx.strokeStyle = t.accent + "44"; ctx.stroke();
+  ctx.shadowBlur = 0; ctx.strokeStyle = t.accent + "33"; ctx.stroke();
   ctx.restore();
 }
 
@@ -458,15 +569,15 @@ function drawWorldObjects() {
     const effectiveReqs = d.requires.filter(req => !(sacrificeCleared && req === "SACRIFICE"));
     const open = effectiveReqs.every(id => active.includes(id));
     
-    ctx.save(); ctx.shadowColor = open ? themes[levelData.theme].accent : "#ff4f79"; ctx.shadowBlur = open ? 14 : 7;
-    ctx.fillStyle = open ? "rgba(30,255,100,.15)" : "#521818";
+    ctx.save(); ctx.shadowColor = open ? themes[levelData.theme].accent : "#ff4f79"; ctx.shadowBlur = open ? 8 : 4;
+    ctx.fillStyle = open ? "rgba(30,255,100,.12)" : "#521818";
     ctx.fillRect(d.x, d.y, d.w, d.h);
     ctx.strokeStyle = open ? "#5aff9a" : "#ff557c"; ctx.lineWidth = 2; ctx.strokeRect(d.x + 2, d.y + 2, d.w - 4, d.h - 4);
     ctx.restore();
   });
 
   levelData.crates.forEach(c => {
-    ctx.save(); ctx.shadowColor = themes[levelData.theme].accent; ctx.shadowBlur = 8;
+    ctx.save(); ctx.shadowColor = themes[levelData.theme].accent; ctx.shadowBlur = 5;
     const gr = ctx.createLinearGradient(c.x, c.y, c.x + c.w, c.y + c.h); gr.addColorStop(0, "#c96f2a"); gr.addColorStop(1, "#592812");
     ctx.fillStyle = gr; roundedRect(c.x, c.y, c.w, c.h, 5); ctx.fill();
     ctx.shadowBlur = 0; ctx.strokeStyle = "#ffb77a"; ctx.strokeRect(c.x + 5, c.y + 5, c.w - 10, c.h - 10);
@@ -475,10 +586,10 @@ function drawWorldObjects() {
 
   levelData.switches.forEach(s => {
     const on = active.includes(s.label);
-    ctx.save(); ctx.shadowColor = on ? themes[levelData.theme].accent : "#ff4747"; ctx.shadowBlur = on ? 20 : 10;
+    ctx.save(); ctx.shadowColor = on ? themes[levelData.theme].accent : "#ff4747"; ctx.shadowBlur = on ? 10 : 5;
     ctx.fillStyle = on ? themes[levelData.theme].accent : "#541616";
     roundedRect(s.x, s.y, s.w, s.h, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.shadowBlur = 0; ctx.fillStyle = "#fff"; ctx.font = "bold 10px Arial"; ctx.textAlign = "center"; ctx.fillText(s.label, s.x + s.w/2, s.y + s.h/2 + 4); ctx.restore();
+    ctx.shadowBlur = 0; ctx.fillStyle = "#fff"; ctx.font = "bold 11px Arial"; ctx.textAlign = "center"; ctx.fillText(s.label, s.x + s.w/2, s.y + s.h/2 + 4); ctx.restore();
   });
 }
 
@@ -492,18 +603,18 @@ function drawGoal() {
   });
 
   const t = themes[levelData.theme];
-  ctx.save(); ctx.shadowColor = t.accent; ctx.shadowBlur = 25;
+  ctx.save(); ctx.shadowColor = t.accent; ctx.shadowBlur = 12;
   ctx.fillStyle = "#120505"; roundedRect(g.x, g.y, g.w, g.h, 10); ctx.fill();
   const grad = ctx.createLinearGradient(g.x, g.y, g.x + g.w, g.y + g.h);
   grad.addColorStop(0, doorsOpen ? t.accent : "#4a1616"); grad.addColorStop(1, "#120505");
   ctx.fillStyle = grad; roundedRect(g.x + 5, g.y + 5, g.w - 10, g.h - 10, 8); ctx.fill();
   ctx.strokeStyle = t.accent; ctx.lineWidth = 3; ctx.stroke();
   ctx.fillStyle = "#fff"; ctx.font = "bold 23px Arial"; ctx.textAlign = "center"; ctx.fillText(doorsOpen ? "✦" : "⌑", g.x + g.w/2, g.y + g.h/2 - 3);
-  ctx.font = "bold 9px Arial"; ctx.fillText(doorsOpen ? "OPEN" : "LOCKED", g.x + g.w/2, g.y + g.h - 13); ctx.restore();
+  ctx.font = "bold 10px Arial"; ctx.fillText(doorsOpen ? "OPEN" : "LOCKED", g.x + g.w/2, g.y + g.h - 13); ctx.restore();
 }
 
 function drawActor(a, color, outline) {
-  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 15;
+  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 8;
   const gr = ctx.createLinearGradient(a.x, a.y, a.x + a.size, a.y + a.size);
   gr.addColorStop(0, "#ffffff"); gr.addColorStop(.25, color); gr.addColorStop(1, outline);
   ctx.fillStyle = gr; roundedRect(a.x, a.y, a.size, a.size, 7); ctx.fill();
